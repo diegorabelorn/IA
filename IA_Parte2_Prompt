@@ -1,0 +1,150 @@
+Aja como um Especialista em Inteligência Artificial Simbólica e Lógica Fuzzy. Estou apresentando a segunda parte do meu projeto usando o dataset 'California Housing' (inputs: MedInc e AveRooms).
+
+O desafio era implementar dois sistemas fuzzy:
+1. Classificação (Mamdani): Prever a classe de preço (Baixo/Alto) usando regras linguísticas e defuzzificação por centroide.
+2. Regressão (Sugeno): Prever o valor numérico.
+   - Nota Técnica: Devido a limitações da biblioteca scikit-fuzzy com Sugeno puro, implementei "Singletons" (triângulos finos) na saída para simular as constantes do Sugeno.
+
+Os requisitos visuais solicitados foram:
+- Gráficos das Funções de Pertinência (Entradas e Saídas).
+- Superfície de Controle 3D (Curva de Mapeamento) para ambos os sistemas.
+- Comparação de performance com o Random Forest da Parte 1.
+
+Abaixo segue o meu código Python completo:
+
+'''python
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, recall_score, roc_auc_score, r2_score, mean_squared_error
+
+# --- 1. PREPARAÇÃO DE DADOS ---
+dados_raw = fetch_california_housing(as_frame=True)
+df = dados_raw.frame
+df.rename(columns={'MedHouseVal': 'PrecoMediano'}, inplace=True)
+y_reg = df['PrecoMediano'].values 
+ponto_corte = df['PrecoMediano'].median()
+y_clf = np.where(df['PrecoMediano'] >= ponto_corte, 1, 0)
+X = df[['MedInc', 'AveRooms']].values
+X_train, X_test, y_train_reg, y_test_reg, y_train_clf, y_test_clf = train_test_split(X, y_reg, y_clf, test_size=0.3, random_state=42, stratify=y_clf)
+
+# --- 2. SISTEMAS FUZZY ---
+medinc_range = np.arange(0, 10.1, 0.1)
+averooms_range = np.arange(0, 10.1, 0.1)
+preco_class_range = np.arange(0, 1.01, 0.01)
+preco_reg_range = np.arange(0, 5.01, 0.05) 
+
+def criar_antecedentes_comuns():
+    MedInc = ctrl.Antecedent(medinc_range, 'MedInc')
+    AveRooms = ctrl.Antecedent(averooms_range, 'AveRooms')
+    MedInc['Baixo'] = fuzz.trimf(medinc_range, [0, 0, 4])
+    MedInc['Médio'] = fuzz.trimf(medinc_range, [3, 5, 7])
+    MedInc['Alto'] = fuzz.trimf(medinc_range, [6, 10, 10])
+    AveRooms['Poucos'] = fuzz.trimf(averooms_range, [0, 0, 4])
+    AveRooms['Moderados'] = fuzz.trimf(averooms_range, [3, 5.5, 8])
+    AveRooms['Muitos'] = fuzz.trimf(averooms_range, [7, 10, 10])
+    return MedInc, AveRooms
+
+def criar_sistema_classificacao():
+    MedInc, AveRooms = criar_antecedentes_comuns()
+    PrecoAlto_clf = ctrl.Consequent(preco_class_range, 'PrecoAlto_clf', defuzzify_method='centroid')
+    PrecoAlto_clf['Não'] = fuzz.trimf(preco_class_range, [0, 0, 0.5])
+    PrecoAlto_clf['Talvez'] = fuzz.trimf(preco_class_range, [0.3, 0.5, 0.7])
+    PrecoAlto_clf['Sim'] = fuzz.trimf(preco_class_range, [0.5, 1, 1])
+    regras = [
+        ctrl.Rule(MedInc['Baixo'], PrecoAlto_clf['Não']),
+        ctrl.Rule(MedInc['Médio'] & AveRooms['Poucos'], PrecoAlto_clf['Não']),
+        ctrl.Rule(MedInc['Médio'] & AveRooms['Moderados'], PrecoAlto_clf['Talvez']),
+        ctrl.Rule(MedInc['Baixo'] & AveRooms['Muitos'], PrecoAlto_clf['Talvez']),
+        ctrl.Rule(MedInc['Alto'], PrecoAlto_clf['Sim']),
+        ctrl.Rule(MedInc['Médio'] & AveRooms['Muitos'], PrecoAlto_clf['Sim'])
+    ]
+    return ctrl.ControlSystemSimulation(ctrl.ControlSystem(regras)), MedInc, AveRooms, PrecoAlto_clf
+
+def criar_sistema_regressao():
+    MedInc, AveRooms = criar_antecedentes_comuns()
+    PrecoMediano_reg = ctrl.Consequent(preco_reg_range, 'PrecoMediano_reg', defuzzify_method='centroid')
+    # Singletons simulados
+    PrecoMediano_reg['z07'] = fuzz.trimf(preco_reg_range, [0.7, 0.7, 0.7])
+    PrecoMediano_reg['z10'] = fuzz.trimf(preco_reg_range, [1.0, 1.0, 1.0])
+    PrecoMediano_reg['z15'] = fuzz.trimf(preco_reg_range, [1.5, 1.5, 1.5])
+    PrecoMediano_reg['z22'] = fuzz.trimf(preco_reg_range, [2.2, 2.2, 2.2])
+    PrecoMediano_reg['z28'] = fuzz.trimf(preco_reg_range, [2.8, 2.8, 2.8])
+    PrecoMediano_reg['z35'] = fuzz.trimf(preco_reg_range, [3.5, 3.5, 3.5])
+    PrecoMediano_reg['z45'] = fuzz.trimf(preco_reg_range, [4.5, 4.5, 4.5])
+    regras = [
+        ctrl.Rule(MedInc['Baixo'] & AveRooms['Poucos'], PrecoMediano_reg['z07']),
+        ctrl.Rule(MedInc['Baixo'] & AveRooms['Moderados'], PrecoMediano_reg['z10']),
+        ctrl.Rule(MedInc['Médio'] & AveRooms['Poucos'], PrecoMediano_reg['z15']),
+        ctrl.Rule(MedInc['Médio'] & AveRooms['Moderados'], PrecoMediano_reg['z22']),
+        ctrl.Rule(MedInc['Médio'] & AveRooms['Muitos'], PrecoMediano_reg['z28']),
+        ctrl.Rule(MedInc['Alto'] & AveRooms['Moderados'], PrecoMediano_reg['z35']),
+        ctrl.Rule(MedInc['Alto'] & AveRooms['Muitos'], PrecoMediano_reg['z45'])
+    ]
+    return ctrl.ControlSystemSimulation(ctrl.ControlSystem(regras)), MedInc, AveRooms, PrecoMediano_reg
+
+# --- 3. EXECUÇÃO ---
+sis_clf, MedInc, AveRooms, var_out_clf = criar_sistema_classificacao()
+sis_reg, _, _, var_out_reg = criar_sistema_regressao()
+
+def predicao_lote(sistema, X_data, output_name, fallback_value=0):
+    preds = []
+    for i in range(len(X_data)):
+        sistema.input['MedInc'] = X_data[i, 0]
+        sistema.input['AveRooms'] = X_data[i, 1]
+        try:
+            sistema.compute()
+            preds.append(sistema.output[output_name])
+        except:
+            preds.append(fallback_value)
+    return np.array(preds)
+
+y_pred_proba_clf = predicao_lote(sis_clf, X_test, 'PrecoAlto_clf', fallback_value=0.5)
+y_pred_clf = np.where(y_pred_proba_clf >= 0.5, 1, 0)
+y_pred_reg = predicao_lote(sis_reg, X_test, 'PrecoMediano_reg', fallback_value=y_test_reg.mean())
+
+print(f"Fuzzy Acc: {accuracy_score(y_test_clf, y_pred_clf):.4f}")
+print(f"Fuzzy MSE: {mean_squared_error(y_test_reg, y_pred_reg):.4f}")
+
+# --- 4. VISUALIZAÇÃO DOS REQUISITOS ---
+fig1, (ax0, ax1) = plt.subplots(nrows=2, figsize=(8, 8))
+for label in MedInc.terms: ax0.plot(MedInc.universe, MedInc[label].mf, label=label)
+ax0.set_title('Entrada 1: Renda')
+for label in AveRooms.terms: ax1.plot(AveRooms.universe, AveRooms[label].mf, label=label)
+ax1.set_title('Entrada 2: Quartos')
+plt.show()
+
+fig2, (ax2, ax3) = plt.subplots(nrows=2, figsize=(8, 8))
+for label in var_out_clf.terms: ax2.plot(var_out_clf.universe, var_out_clf[label].mf, label=label)
+ax2.set_title('Saída Mamdani')
+for label in var_out_reg.terms: ax3.plot(var_out_reg.universe, var_out_reg[label].mf, label=label)
+ax3.set_title('Saída Sugeno (Singletons)')
+plt.show()
+
+def plot_surface(sistema, nome_saida, titulo):
+    x = np.linspace(0, 10, 30); y = np.linspace(0, 10, 30)
+    X, Y = np.meshgrid(x, y); Z = np.zeros_like(X)
+    for i in range(30):
+        for j in range(30):
+            sistema.input['MedInc'] = X[i, j]; sistema.input['AveRooms'] = Y[i, j]
+            try: sistema.compute(); Z[i, j] = sistema.output[nome_saida]
+            except: Z[i, j] = 0
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, Z, cmap='viridis')
+    ax.set_title(titulo)
+    plt.show()
+
+plot_surface(sis_clf, 'PrecoAlto_clf', 'Curva Mapeamento: Mamdani')
+plot_surface(sis_reg, 'PrecoMediano_reg', 'Curva Mapeamento: Sugeno')
+'''
+
+Sua Tarefa:
+1. Interprete os gráficos de pertinência e as superfícies 3D geradas pelo código.
+2. Explique a diferença conceitual entre o meu sistema Mamdani e o Sugeno implementado.
+3. Compare os resultados obtidos (Acurácia/R²) com os da Parte 1, justificando que a Lógica Fuzzy foca em *explicabilidade* e não apenas em performance bruta.
+4. Coloque-se à disposição para responder dúvidas do professor sobre as regras fuzzy criadas e a implementação técnica.
