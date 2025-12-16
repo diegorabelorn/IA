@@ -4,6 +4,6 @@
 * Matheus Dantas
 
 # Links vídeos (Youtube)
-* Parte 1 : https://www.youtube.com/watch?v=wDJYCoUe1Tw
-* Parte 2 :
+* Parte 1 : https://youtu.be/wDJYCoUe1Tw
+* Parte 2 :https://youtu.be/H-AVSc0SKD4
 * Parte 3 :
