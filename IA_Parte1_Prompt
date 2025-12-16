@@ -1,0 +1,226 @@
+Aja como um Especialista Sênior em Data Science e Machine Learning. Estou submetendo meu projeto universitário para correção. O objetivo era utilizar o dataset 'California Housing' para duas tarefas distintas:
+
+1. Classificação ("Alegorização"): Criar uma variável binária (Preço Alto/Baixo) e comparar Regressão Logística vs. Random Forest Classifier.
+   - Requisitos atendidos: Acurácia, Sensibilidade, Matriz de Confusão e Curva ROC.
+2. Regressão (Uso Normal): Prever o valor exato. Comparar Regressão Linear vs. Random Forest Regressor.
+   - Requisitos atendidos: R², MSE e Otimização de Hiperparâmetros (GridSearch).
+
+Abaixo segue o meu código Python desenvolvido:
+
+'''python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.metrics import (
+    accuracy_score,
+    recall_score,
+    confusion_matrix,
+    roc_curve,
+    auc,
+    r2_score,
+    mean_squared_error,
+    ConfusionMatrixDisplay
+)
+
+
+# 1. Extração do Dataset de California Housing
+print("Carregando o Dataset California Housing...")
+dados_raw = fetch_california_housing(as_frame=True)
+
+# Converter para DataFrame para facilitar a análise
+df = dados_raw.frame
+
+# Renomear a coluna alvo para um nome mais amigável e colocá-la ao final
+df.rename(columns={'MedHouseVal': 'PrecoMediano'}, inplace=True)
+
+# Exibição das primeiras linhas do DataFrame
+print("\n--- Primeiras 5 Linhas do Dataset ---")
+print(df.head())
+
+# Verificação de informações básicas (tipos de dados, valores nulos)
+print("\n--- Informações do DataFrame (info()) ---")
+df.info()
+
+# A) Estatísticas Descritivas
+print("\n--- Estatísticas Descritivas dos Atributos Numéricos ---")
+print(df.describe().T)
+
+# Armazenar as colunas de características para uso futuro
+colunas_caracteristicas = df.columns[:-1]
+
+# B) Visualização da Distribuição (Histogramas)
+print("\n--- Visualização da Distribuição de Variáveis ---")
+
+# Configuração da figura para múltiplos gráficos
+df.hist(figsize=(15, 10), bins=30, edgecolor='black', grid=False)
+plt.suptitle('Distribuição das Características do California Housing', y=1.02)
+plt.tight_layout(rect=[0, 0, 1, 0.98])
+plt.show()
+
+# Foco na variável Alvo
+plt.figure(figsize=(8, 5))
+sns.histplot(df['PrecoMediano'], kde=True, bins=50)
+plt.title('Distribuição do Preço Mediano da Casa')
+plt.xlabel('Preço Mediano (x $100,000)')
+plt.show()
+
+# C) Matriz de Correlação
+plt.figure(figsize=(10, 8))
+# Calcula a matriz de correlação
+matriz_corr = df.corr()
+
+# Desenha o mapa de calor da correlação
+sns.heatmap(matriz_corr, annot=True, cmap='coolwarm', fmt=".2f", linewidths=.5, linecolor='black')
+plt.title('Matriz de Correlação entre Atributos')
+plt.show()
+
+# Mostrando a correlação com a variável alvo (PrecoMediano)
+print("\n--- Correlação com o Preço Mediano ---")
+print(matriz_corr['PrecoMediano'].sort_values(ascending=False))
+
+
+# -----------------------------------------------------
+
+# 3. Criação da Variável Categórica
+
+# Definindo o ponto de corte (a mediana)
+ponto_corte = df['PrecoMediano'].median()
+print(f"\nO Preço Mediano de Corte é: {ponto_corte:.2f} (x $100,000)")
+
+# Criação da nova coluna:
+# 1 = Preço Alto (acima ou igual ao ponto de corte)
+# 0 = Preço Baixo (abaixo do ponto de corte)
+df['ClassificacaoPreco'] = np.where(df['PrecoMediano'] >= ponto_corte, 1, 0)
+
+print("\n--- Contagem da Nova Variável de Classificação ---")
+print(df['ClassificacaoPreco'].value_counts())
+print("\nVerificação Final do DataFrame (com coluna de classificação):")
+print(df.head())
+
+# ------------------------------------
+
+# ====================================================================
+# 2. CLASSIFICAÇÃO (Tarefa 1)
+# ====================================================================
+
+print("\n--- INICIANDO CLASSIFICAÇÃO ---")
+
+# Treinamento dos Modelos
+log_reg = LogisticRegression(random_state=42, solver='liblinear')
+rf_clf = RandomForestClassifier(random_state=42, n_estimators=100) # Modelo com Hiperparâmetro Padrão
+
+log_reg.fit(X_train_scaled, y_train_clf)
+rf_clf.fit(X_train_scaled, y_train_clf)
+
+# Predições
+y_pred_log = log_reg.predict(X_test_scaled)
+y_pred_rf = rf_clf.predict(X_test_scaled)
+y_proba_log = log_reg.predict_proba(X_test_scaled)[:, 1]
+y_proba_rf = rf_clf.predict_proba(X_test_scaled)[:, 1]
+
+# 2.1. Otimização de Hiperparâmetro (GridSearchCV no Random Forest)
+param_grid = {'n_estimators': [50, 100, 200], 'max_depth': [5, 10]}
+grid_search_rf = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=3, scoring='accuracy')
+grid_search_rf.fit(X_train_scaled, y_train_clf)
+rf_clf_best = grid_search_rf.best_estimator_
+y_pred_rf_best = rf_clf_best.predict(X_test_scaled)
+
+# 2.2. Métricas e Gráficos
+print("\n--- AVALIAÇÃO DA CLASSIFICAÇÃO ---")
+def calcular_metricas(y_true, y_pred, y_proba, nome):
+    acc = accuracy_score(y_true, y_pred)
+    rec = recall_score(y_true, y_pred)
+    fpr, tpr, _ = roc_curve(y_true, y_proba)
+    roc_auc = auc(fpr, tpr)
+    cm = confusion_matrix(y_true, y_pred)
+    
+    print(f"\nModelo: {nome}")
+    print(f"Acurácia: {acc:.4f}")
+    print(f"Sensibilidade (Recall): {rec:.4f}")
+    
+    return fpr, tpr, roc_auc, cm
+
+# Resultados
+fpr_log, tpr_log, auc_log, cm_log = calcular_metricas(y_test_clf, y_pred_log, y_proba_log, "Regressão Logística")
+fpr_rf, tpr_rf, auc_rf, cm_rf = calcular_metricas(y_test_clf, y_pred_rf_best, y_proba_rf, "Random Forest (Otimizado)")
+
+# CURVA ROC
+plt.figure(figsize=(8, 6))
+plt.plot(fpr_log, tpr_log, label=f'Logística (AUC = {auc_log:.4f})')
+plt.plot(fpr_rf, tpr_rf, label=f'Random Forest (AUC = {auc_rf:.4f})')
+plt.plot([0, 1], [0, 1], 'k--', label='Aleatório')
+plt.xlabel('Taxa de Falsos Positivos (FPR)')
+plt.ylabel('Taxa de Verdadeiros Positivos (TPR)')
+plt.title('Curva ROC')
+plt.legend()
+plt.show()
+
+# MATRIZ DE CONFUSÃO
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+ConfusionMatrixDisplay(cm_log).plot(ax=ax1, cmap='Blues')
+ax1.title.set_text('Matriz de Confusão: Logística')
+ConfusionMatrixDisplay(cm_rf).plot(ax=ax2, cmap='Blues')
+ax2.title.set_text('Matriz de Confusão: Random Forest (Otimizado)')
+plt.tight_layout()
+plt.show()
+
+# ====================================================================
+# 3. REGRESSÃO (Tarefa 2)
+# ====================================================================
+
+print("\n--- INICIANDO REGRESSÃO ---")
+
+# Treinamento e Otimização
+lin_reg = LinearRegression()
+rf_reg = RandomForestRegressor(random_state=42)
+
+lin_reg.fit(X_train_scaled, y_train_reg)
+
+# Otimização RF Regressor (reduzida para velocidade)
+param_grid_reg = {'n_estimators': [50, 100], 'max_depth': [5, 10]}
+grid_search_rf_reg = GridSearchCV(RandomForestRegressor(random_state=42), param_grid_reg, cv=3, scoring='r2')
+grid_search_rf_reg.fit(X_train_scaled, y_train_reg)
+rf_reg_best = grid_search_rf_reg.best_estimator_
+
+# Predições
+y_pred_lin = lin_reg.predict(X_test_scaled)
+y_pred_rf_reg = rf_reg_best.predict(X_test_scaled)
+
+# 3.1. Métricas
+print("\n--- AVALIAÇÃO DA REGRESSÃO ---")
+def avaliar_regressao(y_true, y_pred, nome):
+    r2 = r2_score(y_true, y_pred)
+    mse = mean_squared_error(y_true, y_pred)
+    print(f"\nModelo: {nome}")
+    print(f"R²: {r2:.4f}")
+    print(f"MSE: {mse:.4f}")
+    return r2, mse
+
+r2_lin, mse_lin = avaliar_regressao(y_test_reg, y_pred_lin, "Regressão Linear")
+r2_rf_reg, mse_rf_reg = avaliar_regressao(y_test_reg, y_pred_rf_reg, "Random Forest Regressor (Otimizado)")
+
+# 3.2. Curva de Regressão
+plt.figure(figsize=(8, 6))
+plt.scatter(y_test_reg, y_pred_rf_reg, alpha=0.3, label='Random Forest')
+plt.scatter(y_test_reg, y_pred_lin, alpha=0.3, label='Regressão Linear')
+plt.plot([y_test_reg.min(), y_test_reg.max()], [y_test_reg.min(), y_test_reg.max()], 'k--', lw=2, label='Predição Perfeita')
+plt.xlabel('Valor Real')
+plt.ylabel('Valor Predito')
+plt.title('Curva de Regressão (Predito vs. Real)')
+plt.legend()
+plt.show()
+
+print("\n--- FIM DA EXECUÇÃO ---")
+'''
+
+Sua Tarefa:
+1. Analise o código internamente.
+2. Gere um resumo executivo dos resultados (compare os modelos com números).
+3. Explique os gráficos gerados (Matriz de Correlação, ROC, Matriz de Confusão).
+4. Fique aguardando perguntas do professor (usuário) sobre a implementação, escolha de métricas ou interpretação dos dados. Você deve defender a escolha do Random Forest como melhor modelo baseada nas métricas obtidas.
